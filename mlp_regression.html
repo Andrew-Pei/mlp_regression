@@ -1,0 +1,1340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MLP 回归可视化实验平台</title>
+    <!-- Chart.js 轻量图表 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js">
+    </script>
+    <!-- TensorFlow.js -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js">
+    </script>
+    <style>
+        /* ----- 全局重置 & 变量 ----- */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        :root {
+            --bg: #f0f2f5;
+            --card: #ffffff;
+            --primary: #4f6ef7;
+            --primary-light: #e8ecff;
+            --primary-dark: #3a56d4;
+            --text: #1a1a2e;
+            --text-secondary: #555;
+            --border: #dce0e8;
+            --shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+            --radius: 14px;
+            --radius-sm: 8px;
+            --transition: 0.25s ease;
+            --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+        body {
+            font-family: var(--font);
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            padding: 24px;
+        }
+        /* ----- 布局容器 ----- */
+        .app {
+            max-width: 1600px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 16px;
+            background: var(--card);
+            padding: 18px 28px;
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+        }
+        header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+            background: linear-gradient(135deg, var(--primary), #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        header .badge {
+            font-size: 13px;
+            background: var(--primary-light);
+            color: var(--primary);
+            padding: 4px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+        }
+        .main-grid {
+            display: grid;
+            grid-template-columns: 380px 1fr;
+            gap: 24px;
+        }
+        @media (max-width: 1100px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        /* ----- 卡片通用 ----- */
+        .card {
+            background: var(--card);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 20px 22px;
+            transition: var(--transition);
+        }
+        .card-title {
+            font-size: 15px;
+            font-weight: 600;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text);
+            letter-spacing: -0.2px;
+        }
+        .card-title .icon {
+            font-size: 18px;
+        }
+        /* ----- 左侧：网络结构 ----- */
+        .left-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .network-canvas-wrap {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 1/0.8;
+            background: #fafbff;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+        .network-canvas-wrap canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        .layer-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .layer-controls .row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .layer-controls .row label {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            min-width: 70px;
+        }
+        .btn {
+            background: var(--primary);
+            color: #fff;
+            border: none;
+            padding: 7px 18px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 2px 8px rgba(79, 110, 247, 0.25);
+        }
+        .btn:hover {
+            background: var(--primary-dark);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(79, 110, 247, 0.35);
+        }
+        .btn:active {
+            transform: scale(0.97);
+        }
+        .btn-outline {
+            background: transparent;
+            color: var(--primary);
+            border: 1.5px solid var(--primary);
+            box-shadow: none;
+        }
+        .btn-outline:hover {
+            background: var(--primary-light);
+            box-shadow: none;
+            transform: none;
+        }
+        .btn-danger {
+            background: #ef4444;
+            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.25);
+        }
+        .btn-danger:hover {
+            background: #dc2626;
+            box-shadow: 0 4px 16px rgba(239, 68, 68, 0.35);
+        }
+        .btn-success {
+            background: #22c55e;
+            box-shadow: 0 2px 8px rgba(34, 197, 94, 0.25);
+        }
+        .btn-success:hover {
+            background: #16a34a;
+            box-shadow: 0 4px 16px rgba(34, 197, 94, 0.35);
+        }
+        .btn-sm {
+            padding: 4px 12px;
+            font-size: 12px;
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+        .layer-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 4px;
+        }
+        .layer-tag {
+            background: var(--primary-light);
+            color: var(--primary-dark);
+            padding: 4px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .layer-tag .del {
+            cursor: pointer;
+            opacity: 0.5;
+            font-weight: 700;
+            transition: var(--transition);
+        }
+        .layer-tag .del:hover {
+            opacity: 1;
+            color: #ef4444;
+        }
+        .neuron-slider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+            min-width: 120px;
+        }
+        .neuron-slider input[type="range"] {
+            flex: 1;
+            accent-color: var(--primary);
+        }
+        .neuron-slider .val {
+            font-weight: 600;
+            min-width: 28px;
+            text-align: center;
+            font-size: 14px;
+        }
+
+        /* ----- 右侧面板 ----- */
+        .right-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .right-panel .card {
+            padding: 18px 22px;
+        }
+
+        /* 数据生成 */
+        .data-gen .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .data-gen select,
+        .data-gen input[type="number"] {
+            padding: 6px 12px;
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            background: #fff;
+            color: var(--text);
+            outline: none;
+            transition: var(--transition);
+            width: auto;
+            min-width: 70px;
+        }
+        .data-gen select:focus,
+        .data-gen input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 110, 247, 0.15);
+        }
+        .data-gen .param-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 12px;
+            align-items: center;
+        }
+        .data-gen .param-group label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .data-gen .param-group input {
+            width: 60px;
+        }
+        .manual-add {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            margin-top: 8px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+        }
+        .manual-add input {
+            width: 80px;
+            padding: 6px 10px;
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            outline: none;
+        }
+        .manual-add input:focus {
+            border-color: var(--primary);
+        }
+        .chart-container {
+            position: relative;
+            height: 260px;
+            margin-top: 10px;
+        }
+        .chart-container-sm {
+            height: 140px;
+        }
+
+        /* 训练控制 */
+        .train-controls .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px 16px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .train-controls .row label {
+            font-size: 13px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .train-controls .row input[type="number"] {
+            width: 70px;
+            padding: 5px 8px;
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            outline: none;
+        }
+        .train-controls .row input:focus {
+            border-color: var(--primary);
+        }
+        .train-status {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-top: 6px;
+        }
+        .train-status .loss {
+            font-weight: 600;
+            color: var(--text);
+        }
+        .progress-bar {
+            flex: 1;
+            min-width: 100px;
+            height: 6px;
+            background: var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-bar .fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--primary), #a78bfa);
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+
+        /* 推理 */
+        .infer-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            margin-top: 6px;
+        }
+        .infer-row input {
+            width: 100px;
+            padding: 6px 12px;
+            border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            outline: none;
+        }
+        .infer-row input:focus {
+            border-color: var(--primary);
+        }
+        .infer-result {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--primary-dark);
+            background: var(--primary-light);
+            padding: 4px 18px;
+            border-radius: 20px;
+            display: inline-block;
+        }
+
+        /* 响应式微调 */
+        @media (max-width: 600px) {
+            body {
+                padding: 12px;
+            }
+            .card {
+                padding: 14px 16px;
+            }
+            header h1 {
+                font-size: 20px;
+            }
+            .main-grid {
+                gap: 16px;
+            }
+            .data-gen .row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .train-controls .row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .infer-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+        }
+
+        /* 滚动条 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--bg);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #b0b8c8;
+        }
+
+        /* 小徽标 */
+        .dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 4px;
+        }
+        .dot.green {
+            background: #22c55e;
+        }
+        .dot.orange {
+            background: #f59e0b;
+        }
+        .dot.red {
+            background: #ef4444;
+        }
+        .flex-center {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .mt-8 {
+            margin-top: 8px;
+        }
+        .mb-8 {
+            margin-bottom: 8px;
+        }
+        .text-muted {
+            color: var(--text-secondary);
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app">
+        <!-- 头部 -->
+        <header>
+            <h1>🧠 MLP 回归实验台</h1>
+            <span class="badge">⚡ 拖拽 · 可视化 · 实时训练</span>
+        </header>
+
+        <!-- 主体网格 -->
+        <div class="main-grid">
+            <!-- ====== 左侧：网络结构 ====== -->
+            <div class="left-panel">
+                <div class="card">
+                    <div class="card-title"><span class="icon">🔗</span> 网络结构</div>
+                    <div class="network-canvas-wrap">
+                        <canvas id="netCanvas"></canvas>
+                    </div>
+                    <div class="layer-controls mt-8">
+                        <div class="row">
+                            <label>隐藏层</label>
+                            <button class="btn btn-sm" id="addLayerBtn">➕ 添加层</button>
+                            <button class="btn btn-sm btn-danger" id="removeLayerBtn">✖ 删除末层</button>
+                        </div>
+                        <div class="row">
+                            <label>当前结构</label>
+                            <div class="layer-list" id="layerList"></div>
+                        </div>
+                        <div class="row">
+                            <label>选中层神经元</label>
+                            <div class="neuron-slider">
+                                <input type="range" id="neuronSlider" min="1" max="24" value="6" />
+                                <span class="val" id="neuronVal">6</span>
+                            </div>
+                            <button class="btn btn-sm btn-outline" id="applyNeuronBtn">应用</button>
+                        </div>
+                        <div class="row text-muted" style="font-size:12px; color:#888;">
+                            💡 点击层标签可选中，拖动滑块调整神经元数
+                        </div>
+                    </div>
+                </div>
+                <div class="card" style="background:var(--primary-light); border:1px solid var(--primary);">
+                    <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+                        <span style="font-weight:600; color:var(--primary-dark);">📊 模型概要</span>
+                        <span id="modelSummary" style="font-size:13px; color:var(--text-secondary);">输入 1 → 隐藏 6 → 输出 1</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ====== 右侧：数据 + 训练 + 推理 ====== -->
+            <div class="right-panel">
+
+                <!-- 数据卡片 -->
+                <div class="card data-gen">
+                    <div class="card-title"><span class="icon">📈</span> 数据管理</div>
+                    <div class="row">
+                        <select id="dataType">
+                            <option value="linear">线性 y = ax + b</option>
+                            <option value="quadratic" selected>二次 y = ax² + bx + c</option>
+                            <option value="sin">正弦 y = A·sin(Bx + C)</option>
+                            <option value="exponential">指数 y = a·e^(bx)</option>
+                            <option value="multi">多峰混合</option>
+                        </select>
+                        <div class="param-group" id="paramGroup">
+                            <label>a <input type="number" id="p1" value="1.2" step="0.1" /></label>
+                            <label>b <input type="number" id="p2" value="-0.8" step="0.1" /></label>
+                            <label>c <input type="number" id="p3" value="0.5" step="0.1" /></label>
+                            <label>噪声 <input type="number" id="noise" value="0.15" step="0.01" min="0" max="1" /></label>
+                        </div>
+                        <button class="btn btn-success" id="generateDataBtn">🔄 生成数据</button>
+                    </div>
+                    <div class="row" style="margin-top:4px;">
+                        <span class="text-muted">样本数</span>
+                        <input type="number" id="sampleCount" value="120" min="20" max="500" style="width:70px;" />
+                        <span class="text-muted">范围</span>
+                        <input type="number" id="rangeMin" value="-3" step="0.5" style="width:60px;" />
+                        <span>～</span>
+                        <input type="number" id="rangeMax" value="3" step="0.5" style="width:60px;" />
+                        <span class="text-muted" style="margin-left:4px;">(x)</span>
+                    </div>
+                    <!-- 手动添加 -->
+                    <div class="manual-add">
+                        <span class="text-muted">✏️ 手动添加点</span>
+                        <input type="number" id="manualX" placeholder="x" step="0.1" />
+                        <input type="number" id="manualY" placeholder="y" step="0.1" />
+                        <button class="btn btn-sm btn-outline" id="addPointBtn">➕ 添加</button>
+                        <button class="btn btn-sm btn-danger" id="clearDataBtn">🗑 清空</button>
+                        <span class="text-muted" id="dataCountLabel">共 0 个点</span>
+                    </div>
+                    <!-- 图表 -->
+                    <div class="chart-container">
+                        <canvas id="dataChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- 训练卡片 -->
+                <div class="card train-controls">
+                    <div class="card-title"><span class="icon">⚡</span> 模型训练</div>
+                    <div class="row">
+                        <label>轮次 <input type="number" id="epochs" value="200" step="50" min="10" /></label>
+                        <label>学习率 <input type="number" id="lr" value="0.01" step="0.001" min="0.0001" max="0.1" /></label>
+                        <label>批次 <input type="number" id="batchSize" value="32" step="8" min="4" max="256" /></label>
+                        <button class="btn" id="trainBtn">🚀 开始训练</button>
+                        <button class="btn btn-danger" id="stopTrainBtn" disabled>⏹ 停止</button>
+                    </div>
+                    <div class="train-status">
+                        <span>状态: <span id="trainStatusText">就绪</span></span>
+                        <span>损失: <span class="loss" id="lossDisplay">—</span></span>
+                        <div class="progress-bar"><div class="fill" id="trainProgress"></div></div>
+                        <span id="epochDisplay">0 / 0</span>
+                    </div>
+                    <div class="chart-container chart-container-sm">
+                        <canvas id="lossChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- 推理卡片 -->
+                <div class="card">
+                    <div class="card-title"><span class="icon">🔮</span> 推理预测</div>
+                    <div class="infer-row">
+                        <span class="text-muted">输入 x =</span>
+                        <input type="number" id="inferX" value="1.0" step="0.1" />
+                        <button class="btn" id="inferBtn">🧠 预测</button>
+                        <span class="text-muted">输出 ŷ =</span>
+                        <span class="infer-result" id="inferResult">—</span>
+                    </div>
+                    <div style="margin-top:8px; font-size:13px; color:var(--text-secondary);">
+                        💡 预测值会同步显示在数据图表上（红色星标）
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        //  全局状态
+        // ============================================================
+        const state = {
+            // 网络结构: 每层神经元数 (不包括输入层)
+            // 例如 [6, 4] 表示 输入(1) -> 隐藏6 -> 隐藏4 -> 输出(1)
+            hiddenLayers: [6],
+            selectedLayerIdx: 0, // 当前选中的隐藏层索引
+
+            // 数据
+            dataPoints: [], // [{x, y}]
+            dataType: 'quadratic',
+
+            // 训练
+            isTraining: false,
+            stopTraining: false,
+            lossHistory: [],
+            epochCount: 0,
+
+            // 模型
+            model: null,
+            isModelBuilt: false,
+
+            // 推理结果
+            lastInferX: null,
+            lastInferY: null,
+        };
+
+        // ============================================================
+        //  DOM 引用
+        // ============================================================
+        const $ = id => document.getElementById(id);
+        const netCanvas = $('netCanvas');
+        const ctx = netCanvas.getContext('2d');
+        const layerList = $('layerList');
+        const neuronSlider = $('neuronSlider');
+        const neuronVal = $('neuronVal');
+        const applyNeuronBtn = $('applyNeuronBtn');
+        const addLayerBtn = $('addLayerBtn');
+        const removeLayerBtn = $('removeLayerBtn');
+        const modelSummary = $('modelSummary');
+
+        const dataType = $('dataType');
+        const p1 = $('p1'),
+            p2 = $('p2'),
+            p3 = $('p3');
+        const noise = $('noise');
+        const sampleCount = $('sampleCount');
+        const rangeMin = $('rangeMin'),
+            rangeMax = $('rangeMax');
+        const generateDataBtn = $('generateDataBtn');
+        const manualX = $('manualX'),
+            manualY = $('manualY');
+        const addPointBtn = $('addPointBtn');
+        const clearDataBtn = $('clearDataBtn');
+        const dataCountLabel = $('dataCountLabel');
+
+        const epochsInput = $('epochs');
+        const lrInput = $('lr');
+        const batchSizeInput = $('batchSize');
+        const trainBtn = $('trainBtn');
+        const stopTrainBtn = $('stopTrainBtn');
+        const trainStatusText = $('trainStatusText');
+        const lossDisplay = $('lossDisplay');
+        const trainProgress = $('trainProgress');
+        const epochDisplay = $('epochDisplay');
+
+        const inferX = $('inferX');
+        const inferBtn = $('inferBtn');
+        const inferResult = $('inferResult');
+
+        // ============================================================
+        //  图表实例 (Chart.js)
+        // ============================================================
+        let dataChart = null;
+        let lossChart = null;
+
+        function initCharts() {
+            // 数据散点图
+            const dc = document.getElementById('dataChart').getContext('2d');
+            dataChart = new Chart(dc, {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: '训练数据',
+                        data: [],
+                        backgroundColor: '#4f6ef7',
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                    }, {
+                        label: '预测曲线',
+                        data: [],
+                        type: 'line',
+                        borderColor: '#ef4444',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        fill: false,
+                        tension: 0.3,
+                    }, {
+                        label: '推理点',
+                        data: [],
+                        backgroundColor: '#ef4444',
+                        pointRadius: 8,
+                        pointStyle: 'star',
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { boxWidth: 12, padding: 8, font: { size: 11 } } },
+                        tooltip: { callbacks: { label: (ctx) => `(${ctx.parsed.x.toFixed(3)}, ${ctx.parsed.y.toFixed(3)})` } }
+                    },
+                    scales: {
+                        x: { type: 'linear', title: { display: true, text: 'x' } },
+                        y: { title: { display: true, text: 'y' } }
+                    }
+                }
+            });
+
+            // 损失曲线
+            const lc = document.getElementById('lossChart').getContext('2d');
+            lossChart = new Chart(lc, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: '训练损失',
+                        data: [],
+                        borderColor: '#f59e0b',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        fill: true,
+                        backgroundColor: 'rgba(245,158,11,0.08)',
+                        tension: 0.2,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { boxWidth: 12, padding: 6, font: { size: 10 } } }
+                    },
+                    scales: {
+                        x: { title: { display: true, text: '步数', font: { size: 10 } }, ticks: { maxTicksLimit: 20 } },
+                        y: { title: { display: true, text: 'MSE', font: { size: 10 } }, beginAtZero: true }
+                    }
+                }
+            });
+        }
+
+        // ============================================================
+        //  网络可视化 (Canvas)
+        // ============================================================
+        function drawNetwork() {
+            const rect = netCanvas.parentElement.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            const w = rect.width || 400;
+            const h = rect.height || 320;
+            netCanvas.width = w * dpr;
+            netCanvas.height = h * dpr;
+            netCanvas.style.width = w + 'px';
+            netCanvas.style.height = h + 'px';
+            ctx.scale(dpr, dpr);
+
+            const layers = [1, ...state.hiddenLayers, 1];
+            const nLayers = layers.length;
+            const padding = { top: 30, bottom: 30, left: 40, right: 40 };
+            const availW = w - padding.left - padding.right;
+            const availH = h - padding.top - padding.bottom;
+            const spacingX = nLayers > 1 ? availW / (nLayers - 1) : availW;
+
+            const maxNeurons = Math.max(...layers);
+            const radius = Math.min(18, (availH / (maxNeurons + 2)) * 0.45);
+            const finalRadius = Math.max(6, Math.min(22, radius));
+
+            // 清空
+            ctx.clearRect(0, 0, w, h);
+
+            // 计算每层神经元位置
+            const positions = layers.map((count, idx) => {
+                const cx = padding.left + idx * spacingX;
+                const cy = padding.top + availH / 2;
+                const spacingY = availH / (count + 1);
+                const pts = [];
+                for (let i = 0; i < count; i++) {
+                    const y = padding.top + (i + 1) * spacingY;
+                    pts.push({ x: cx, y });
+                }
+                return pts;
+            });
+
+            // 绘制连线 (全连接)
+            for (let l = 0; l < nLayers - 1; l++) {
+                const from = positions[l];
+                const to = positions[l + 1];
+                for (const a of from) {
+                    for (const b of to) {
+                        ctx.beginPath();
+                        ctx.moveTo(a.x, a.y);
+                        ctx.lineTo(b.x, b.y);
+                        ctx.strokeStyle = 'rgba(79,110,247,0.15)';
+                        ctx.lineWidth = 0.8;
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            // 绘制神经元
+            const colors = ['#4f6ef7', '#a78bfa', '#818cf8', '#6366f1', '#8b5cf6'];
+            for (let l = 0; l < nLayers; l++) {
+                const pts = positions[l];
+                const isInput = l === 0;
+                const isOutput = l === nLayers - 1;
+                const color = isInput ? '#22c55e' : isOutput ? '#ef4444' : colors[(l - 1) % colors.length];
+                const label = isInput ? '输入' : isOutput ? '输出' : `隐藏${l}`;
+
+                for (const p of pts) {
+                    ctx.beginPath();
+                    ctx.arc(p.x, p.y, finalRadius, 0, 2 * Math.PI);
+                    ctx.fillStyle = color + '30';
+                    ctx.fill();
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                    // 高光
+                    ctx.beginPath();
+                    ctx.arc(p.x - finalRadius * 0.25, p.y - finalRadius * 0.25, finalRadius * 0.2, 0, 2 * Math.PI);
+                    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                    ctx.fill();
+                }
+
+                // 层标签
+                const midX = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+                const midY = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+                ctx.fillStyle = '#1a1a2e';
+                ctx.font = '11px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                const labelY = pts[0] ? pts[0].y - finalRadius - 6 : midY - finalRadius - 6;
+                ctx.fillText(`${label} (${pts.length})`, midX, labelY);
+            }
+
+            // 标注输入/输出
+            ctx.fillStyle = '#888';
+            ctx.font = '10px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            if (positions[0] && positions[0].length > 0) {
+                ctx.fillText('x', positions[0][0].x, positions[0][0].y + finalRadius + 4);
+            }
+            const last = positions[positions.length - 1];
+            if (last && last.length > 0) {
+                ctx.fillText('ŷ', last[0].x, last[0].y + finalRadius + 4);
+            }
+
+            // 更新概要
+            const summary = `输入 1 → ${state.hiddenLayers.map(n => `隐藏 ${n}`).join(' → ')} → 输出 1`;
+            modelSummary.textContent = summary;
+        }
+
+        // ============================================================
+        //  层控制
+        // ============================================================
+        function renderLayerTags() {
+            layerList.innerHTML = '';
+            state.hiddenLayers.forEach((n, i) => {
+                const tag = document.createElement('span');
+                tag.className = 'layer-tag';
+                if (i === state.selectedLayerIdx) {
+                    tag.style.border = '2px solid #4f6ef7';
+                    tag.style.background = '#dbe4ff';
+                }
+                tag.innerHTML = `L${i+1}: ${n} 神经元 <span class="del" data-idx="${i}">✕</span>`;
+                tag.querySelector('.del').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (state.hiddenLayers.length <= 1) {
+                        alert('至少保留一个隐藏层');
+                        return;
+                    }
+                    state.hiddenLayers.splice(i, 1);
+                    if (state.selectedLayerIdx >= state.hiddenLayers.length) {
+                        state.selectedLayerIdx = state.hiddenLayers.length - 1;
+                    }
+                    syncSliderToSelected();
+                    renderLayerTags();
+                    drawNetwork();
+                    buildModel();
+                });
+                tag.addEventListener('click', () => {
+                    state.selectedLayerIdx = i;
+                    syncSliderToSelected();
+                    renderLayerTags();
+                });
+                layerList.appendChild(tag);
+            });
+            syncSliderToSelected();
+            // 更新模型概要
+            const summary = `输入 1 → ${state.hiddenLayers.map(n => `隐藏 ${n}`).join(' → ')} → 输出 1`;
+            modelSummary.textContent = summary;
+        }
+
+        function syncSliderToSelected() {
+            const idx = state.selectedLayerIdx;
+            if (idx >= 0 && idx < state.hiddenLayers.length) {
+                const val = state.hiddenLayers[idx];
+                neuronSlider.value = val;
+                neuronVal.textContent = val;
+            }
+        }
+
+        function applyNeuronCount() {
+            const idx = state.selectedLayerIdx;
+            if (idx < 0 || idx >= state.hiddenLayers.length) return;
+            const val = parseInt(neuronSlider.value);
+            if (val < 1) return;
+            state.hiddenLayers[idx] = val;
+            neuronVal.textContent = val;
+            renderLayerTags();
+            drawNetwork();
+            buildModel();
+        }
+
+        // ============================================================
+        //  模型构建 (TensorFlow.js)
+        // ============================================================
+        function buildModel() {
+            if (state.model) {
+                state.model.dispose();
+                state.model = null;
+            }
+            const layers = [1, ...state.hiddenLayers, 1];
+            const model = tf.sequential();
+            for (let i = 1; i < layers.length; i++) {
+                const units = layers[i];
+                const activation = (i < layers.length - 1) ? 'relu' : 'linear';
+                const inputShape = (i === 1) ? [1] : undefined;
+                model.add(tf.layers.dense({
+                    units,
+                    activation,
+                    inputShape,
+                    kernelInitializer: 'heNormal',
+                }));
+            }
+            model.compile({
+                optimizer: tf.train.adam(parseFloat(lrInput.value) || 0.01),
+                loss: 'meanSquaredError',
+            });
+            state.model = model;
+            state.isModelBuilt = true;
+            state.lossHistory = [];
+            state.epochCount = 0;
+            updateLossChart();
+            lossDisplay.textContent = '—';
+            trainStatusText.textContent = '模型已构建';
+            return model;
+        }
+
+        // ============================================================
+        //  数据生成
+        // ============================================================
+        function generateData() {
+            const type = dataType.value;
+            const a = parseFloat(p1.value) || 0;
+            const b = parseFloat(p2.value) || 0;
+            const c = parseFloat(p3.value) || 0;
+            const n = parseInt(sampleCount.value) || 100;
+            const minX = parseFloat(rangeMin.value) || -3;
+            const maxX = parseFloat(rangeMax.value) || 3;
+            const noiseLevel = parseFloat(noise.value) || 0;
+
+            const pts = [];
+            for (let i = 0; i < n; i++) {
+                const x = minX + (maxX - minX) * (i / (n - 1));
+                let y = 0;
+                switch (type) {
+                    case 'linear':
+                        y = a * x + b;
+                        break;
+                    case 'quadratic':
+                        y = a * x * x + b * x + c;
+                        break;
+                    case 'sin':
+                        y = a * Math.sin(b * x + c);
+                        break;
+                    case 'exponential':
+                        y = a * Math.exp(b * x) + c;
+                        break;
+                    case 'multi':
+                        y = 0.8 * Math.sin(1.5 * x) + 0.5 * Math.cos(2.8 * x) + 0.3 * x * x - 0.5 * x + 0.2;
+                        break;
+                    default:
+                        y = a * x + b;
+                }
+                // 噪声
+                if (noiseLevel > 0) {
+                    y += (Math.random() - 0.5) * 2 * noiseLevel * (Math.abs(y) + 0.3);
+                }
+                pts.push({ x, y });
+            }
+            state.dataPoints = pts;
+            updateDataChart();
+            dataCountLabel.textContent = `共 ${pts.length} 个点`;
+        }
+
+        function addManualPoint() {
+            const x = parseFloat(manualX.value);
+            const y = parseFloat(manualY.value);
+            if (isNaN(x) || isNaN(y)) {
+                alert('请输入有效的 x 和 y 值');
+                return;
+            }
+            state.dataPoints.push({ x, y });
+            updateDataChart();
+            dataCountLabel.textContent = `共 ${state.dataPoints.length} 个点`;
+            manualX.value = '';
+            manualY.value = '';
+        }
+
+        function clearData() {
+            if (state.dataPoints.length === 0) return;
+            if (!confirm('确定清空所有数据点吗？')) return;
+            state.dataPoints = [];
+            updateDataChart();
+            dataCountLabel.textContent = '共 0 个点';
+            // 清空推理标记
+            state.lastInferX = null;
+            state.lastInferY = null;
+            updateDataChart();
+        }
+
+        // ============================================================
+        //  图表更新
+        // ============================================================
+        function updateDataChart() {
+            if (!dataChart) return;
+            const pts = state.dataPoints;
+            const scatterData = pts.map(p => ({ x: p.x, y: p.y }));
+
+            // 预测曲线：如果模型已构建且数据不为空，用当前模型预测
+            let curveData = [];
+            if (state.isModelBuilt && state.model && pts.length > 0) {
+                try {
+                    const xs = pts.map(p => p.x);
+                    const minX = Math.min(...xs);
+                    const maxX = Math.max(...xs);
+                    const step = (maxX - minX) / 100;
+                    const testXs = [];
+                    for (let v = minX; v <= maxX; v += step) {
+                        testXs.push(v);
+                    }
+                    if (testXs.length > 0) {
+                        const inputTensor = tf.tensor2d(testXs.map(v => [v]));
+                        const predTensor = state.model.predict(inputTensor);
+                        const predArr = predTensor.dataSync();
+                        curveData = testXs.map((x, i) => ({ x, y: predArr[i] }));
+                        inputTensor.dispose();
+                        predTensor.dispose();
+                    }
+                } catch (e) { /* ignore */ }
+            }
+
+            // 推理点
+            let inferData = [];
+            if (state.lastInferX !== null && state.lastInferY !== null) {
+                inferData = [{ x: state.lastInferX, y: state.lastInferY }];
+            }
+
+            dataChart.data.datasets[0].data = scatterData;
+            dataChart.data.datasets[1].data = curveData;
+            dataChart.data.datasets[2].data = inferData;
+            dataChart.update('none');
+        }
+
+        function updateLossChart() {
+            if (!lossChart) return;
+            const history = state.lossHistory;
+            const labels = history.map((_, i) => i + 1);
+            lossChart.data.labels = labels;
+            lossChart.data.datasets[0].data = history;
+            lossChart.update('none');
+        }
+
+        // ============================================================
+        //  训练逻辑
+        // ============================================================
+        async function trainModel() {
+            if (state.isTraining) return;
+            if (state.dataPoints.length < 4) {
+                alert('数据点太少，请至少生成或添加 4 个数据点');
+                return;
+            }
+            if (!state.isModelBuilt || !state.model) {
+                buildModel();
+            }
+
+            const epochs = parseInt(epochsInput.value) || 200;
+            const batchSize = parseInt(batchSizeInput.value) || 32;
+
+            // 准备数据
+            const xs = state.dataPoints.map(p => p.x);
+            const ys = state.dataPoints.map(p => p.y);
+            const xsTensor = tf.tensor2d(xs.map(v => [v]));
+            const ysTensor = tf.tensor2d(ys.map(v => [v]));
+
+            state.isTraining = true;
+            state.stopTraining = false;
+            state.lossHistory = [];
+            state.epochCount = 0;
+
+            trainBtn.disabled = true;
+            stopTrainBtn.disabled = false;
+            trainStatusText.textContent = '训练中...';
+            trainProgress.style.width = '0%';
+
+            const lr = parseFloat(lrInput.value) || 0.01;
+            state.model.optimizer.learningRate = lr;
+
+            try {
+                for (let epoch = 1; epoch <= epochs; epoch++) {
+                    if (state.stopTraining) break;
+
+                    const result = await state.model.fit(xsTensor, ysTensor, {
+                        batchSize: Math.min(batchSize, xs.length),
+                        epochs: 1,
+                        shuffle: true,
+                        verbose: 0,
+                    });
+
+                    const loss = result.history.loss[0];
+                    state.lossHistory.push(loss);
+                    state.epochCount = epoch;
+
+                    // 更新UI
+                    const progress = (epoch / epochs) * 100;
+                    trainProgress.style.width = Math.min(100, progress) + '%';
+                    epochDisplay.textContent = `${epoch} / ${epochs}`;
+                    lossDisplay.textContent = loss.toFixed(6);
+
+                    // 每10步更新图表
+                    if (epoch % 5 === 0 || epoch === epochs) {
+                        updateLossChart();
+                        // 更新预测曲线
+                        updateDataChart();
+                    }
+
+                    // 让UI更新
+                    await new Promise(r => setTimeout(r, 10));
+                }
+            } catch (err) {
+                console.error('训练错误:', err);
+                trainStatusText.textContent = '训练出错';
+            } finally {
+                xsTensor.dispose();
+                ysTensor.dispose();
+                state.isTraining = false;
+                trainBtn.disabled = false;
+                stopTrainBtn.disabled = true;
+                if (state.stopTraining) {
+                    trainStatusText.textContent = '已停止';
+                } else {
+                    trainStatusText.textContent = '训练完成 ✅';
+                }
+                trainProgress.style.width = '100%';
+                epochDisplay.textContent = `${state.epochCount} / ${epochs}`;
+                // 最终更新
+                updateLossChart();
+                updateDataChart();
+            }
+        }
+
+        function stopTraining() {
+            if (state.isTraining) {
+                state.stopTraining = true;
+                trainStatusText.textContent = '正在停止...';
+            }
+        }
+
+        // ============================================================
+        //  推理
+        // ============================================================
+        function infer() {
+            const x = parseFloat(inferX.value);
+            if (isNaN(x)) {
+                alert('请输入有效的 x 值');
+                return;
+            }
+            if (!state.isModelBuilt || !state.model) {
+                alert('请先构建并训练模型');
+                return;
+            }
+            try {
+                const inputTensor = tf.tensor2d([[x]]);
+                const predTensor = state.model.predict(inputTensor);
+                const predVal = predTensor.dataSync()[0];
+                inputTensor.dispose();
+                predTensor.dispose();
+
+                state.lastInferX = x;
+                state.lastInferY = predVal;
+                inferResult.textContent = predVal.toFixed(6);
+                updateDataChart();
+            } catch (e) {
+                alert('推理失败: ' + e.message);
+            }
+        }
+
+        // ============================================================
+        //  初始化 & 事件绑定
+        // ============================================================
+        function init() {
+            initCharts();
+
+            // 默认生成数据
+            generateData();
+
+            // 构建初始模型
+            buildModel();
+
+            // 绘制网络
+            drawNetwork();
+            renderLayerTags();
+
+            // ---- 事件 ----
+            addLayerBtn.addEventListener('click', () => {
+                state.hiddenLayers.push(6);
+                state.selectedLayerIdx = state.hiddenLayers.length - 1;
+                renderLayerTags();
+                drawNetwork();
+                buildModel();
+            });
+
+            removeLayerBtn.addEventListener('click', () => {
+                if (state.hiddenLayers.length <= 1) {
+                    alert('至少保留一个隐藏层');
+                    return;
+                }
+                state.hiddenLayers.pop();
+                if (state.selectedLayerIdx >= state.hiddenLayers.length) {
+                    state.selectedLayerIdx = state.hiddenLayers.length - 1;
+                }
+                renderLayerTags();
+                drawNetwork();
+                buildModel();
+            });
+
+            neuronSlider.addEventListener('input', () => {
+                neuronVal.textContent = neuronSlider.value;
+            });
+
+            applyNeuronBtn.addEventListener('click', applyNeuronCount);
+
+            // 数据类型切换时更新参数标签
+            dataType.addEventListener('change', () => {
+                const type = dataType.value;
+                const labels = {
+                    linear: ['a', 'b', 'c'],
+                    quadratic: ['a', 'b', 'c'],
+                    sin: ['A', 'B', 'C'],
+                    exponential: ['a', 'b', 'c'],
+                    multi: ['a', 'b', 'c'],
+                };
+                const ls = labels[type] || ['a', 'b', 'c'];
+                const inputs = [p1, p2, p3];
+                inputs.forEach((inp, i) => {
+                    inp.previousElementSibling.textContent = ls[i] || '—';
+                });
+                // 多峰时隐藏参数
+                if (type === 'multi') {
+                    document.querySelectorAll('.param-group label').forEach(el => el.style.display = 'none');
+                } else {
+                    document.querySelectorAll('.param-group label').forEach(el => el.style.display = 'flex');
+                }
+                generateData();
+            });
+            // 触发一次
+            dataType.dispatchEvent(new Event('change'));
+
+            generateDataBtn.addEventListener('click', generateData);
+            addPointBtn.addEventListener('click', addManualPoint);
+            clearDataBtn.addEventListener('click', clearData);
+
+            trainBtn.addEventListener('click', trainModel);
+            stopTrainBtn.addEventListener('click', stopTraining);
+
+            inferBtn.addEventListener('click', infer);
+            inferX.addEventListener('keydown', (e) => { if (e.key === 'Enter') infer(); });
+
+            // 窗口尺寸变化重绘网络
+            let resizeTimer;
+            window.addEventListener('resize', () => {
+                clearTimeout(resizeTimer);
+                resizeTimer = setTimeout(() => {
+                    drawNetwork();
+                }, 200);
+            });
+
+            // 数据变化时自动更新图表
+            // 已经包含在 generateData / addManualPoint / clearData 中
+
+            console.log('🧠 MLP 回归实验台已启动');
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', init);
+
+        // 暴露一些变量用于调试
+        window.__state = state;
+        window.__buildModel = buildModel;
+        window.__train = trainModel;
+    </script>
+
+</body>
+</html>
